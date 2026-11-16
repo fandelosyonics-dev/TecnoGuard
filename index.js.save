@@ -1,0 +1,110 @@
+const { 
+  Client, 
+  GatewayIntentBits, 
+  SlashCommandBuilder, 
+  ActionRowBuilder, 
+  StringSelectMenuBuilder, 
+  StringSelectMenuOptionBuilder,
+  PermissionFlagsBits,
+  ChannelType
+} = require('discord.js');
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const listaPlantillas = require('./plantillas.js');
+
+client.once('ready', async () => {
+  console.log(`🤖 Bot encendido correctamente como: ${client.user.tag}`);
+
+  // Registrar comando /plantillas
+  const command = new SlashCommandBuilder()
+    .setName('plantillas')
+    .setDescription('Despliega el catálogo con las 20 plantillas profesionales')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
+
+  await client.application.commands.create(command);
+});
+
+client.on('interactionCreate', async interaction => {
+  // Manejar el comando /plantillas
+  if (interaction.isChatInputCommand() && interaction.commandName === 'plantillas') {
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId('seleccionar_plantilla')
+      .setPlaceholder('Selecciona una plantilla para el servidor...');
+
+    listaPlantillas.forEach(pt => {
+      selectMenu.addOptions(
+        new StringSelectMenuOptionBuilder()
+          .setLabel(pt.nombre)
+          .setDescription(pt.descripcion)
+          .setValue(pt.id)
+      );
+    });
+
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+
+    await interaction.reply({
+      content: '📂 **Catálogo de 20 Plantillas Profesionales**\nSelecciona una para crear automáticamente sus **4 categorías, 20 canales de texto y 12 canales de voz**:',
+      components: [row],
+      ephemeral: true
+    });
+  }
+
+  // Manejar la creación automática de canales tras seleccionar
+  if (interaction.isStringSelectMenu() && interaction.customId === 'seleccionar_plantilla') {
+    const seleccion = interaction.values[0];
+    const plantilla = listaPlantillas.find(p => p.id === seleccion);
+
+    if (!plantilla) return;
+
+    await interaction.update({
+      content: `⏳ **Creando la plantilla:** \`${plantilla.nombre}\`...\nEsto puede tomar unos segundos mientras Discord procesa los canales.`,
+      components: []
+    });
+
+    const guild = interaction.guild;
+
+    try {
+      for (const catData of plantilla.categorias) {
+        // 1. Crear la Categoría
+        const categoria = await guild.channels.create({
+          name: catData.nombre,
+          type: ChannelType.GuildCategory
+        });
+
+        // 2. Crear los 5 Canales de Texto dentro de la categoría
+        for (const canalTexto of catData.texto) {
+          await guild.channels.create({
+            name: canalTexto,
+            type: ChannelType.GuildText,
+            parent: categoria.id
+          });
+        }
+
+        // 3. Crear los 3 Canales de Voz dentro de la categoría
+        for (const canalVoz of catData.voz) {
+          await guild.channels.create({
+            name: canalVoz,
+            type: ChannelType.GuildVoice,
+            parent: categoria.id
+          });
+        }
+      }
+
+      await interaction.followUp({
+        content: `✅ **¡Plantilla aplicada con éxito!**\nSe han creado correctamente las 4 categorías, 20 canales de texto y 12 canales de voz de **${plantilla.nombre}**.`,
+        ephemeral: true
+      });
+
+    } catch (error) {
+      console.error(error);
+      await interaction.followUp({
+        content: `❌ Hubo un error al crear los canales. Asegúrate de que el Bot tenga permisos de **Administrador** y esté por encima en la lista de roles.`,
+        ephemeral: true
+      });
+    }
+  }
+});
+
+// Paga tu Token del Discord Developer Portal aquí
+client.login('TU_DISCORD_TOKEN_AQUI');
+
